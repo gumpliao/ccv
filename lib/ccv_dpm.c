@@ -95,6 +95,7 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
         ccv_dense_matrix_t* feature = 0;
         ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
         ccv_matrix_free(response);
+        //printf("(0): %f\n",feature->data.f32[0]);
         part_feature[i] = dx[i] = dy[i] = 0;
         ccv_distance_transform(feature, &part_feature[i], 0, &dx[i], 0, &dy[i], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATIVE | CCV_GSEDT);
         ccv_matrix_free(feature);
@@ -2054,6 +2055,63 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
         (int)(r2->rect.height * 1.5 + 0.5) >= r1->rect.height;
 }
 
+static void _ccv_dpm_compute_score1(ccv_dpm_root_classifier_t* root_classifier, ccv_dense_matrix_t* hog2x, ccv_dense_matrix_t** responses)
+{
+    int i;
+    for (i = 0; i < root_classifier->count; i++) //looping on the parts of the current component
+    {
+        ccv_dpm_part_classifier_t* part = root_classifier->part + i;
+        ccv_dense_matrix_t* response = 0;
+        ccv_filter(hog2x, part->w, &response, 0, CCV_NO_PADDING);
+        ccv_dense_matrix_t* feature = 0;
+        ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
+        ccv_matrix_free(response);
+        responses[i] = feature;
+        //printf("(1): %f\n",responses[i]->data.f32[0]);
+    }
+}
+
+static void _ccv_dpm_compute_score2(ccv_dpm_root_classifier_t* root_classifier, ccv_dense_matrix_t* hog, ccv_dense_matrix_t* hog2x, ccv_dense_matrix_t** responses, ccv_dense_matrix_t** _response, ccv_dense_matrix_t** part_feature, ccv_dense_matrix_t** dx, ccv_dense_matrix_t** dy)
+{
+    ccv_dense_matrix_t* response = 0;
+    ccv_filter(hog, root_classifier->root.w, &response, 0, CCV_NO_PADDING);
+    ccv_dense_matrix_t* root_feature = 0;
+    ccv_flatten(response, (ccv_matrix_t**)&root_feature, 0, 0);
+    ccv_matrix_free(response);
+    *_response = root_feature;
+    if (hog2x == 0)
+        return;
+    ccv_make_matrix_mutable(root_feature);
+    int rwh = (root_classifier->root.w->rows - 1) / 2, rww = (root_classifier->root.w->cols - 1) / 2;
+    int rwh_1 = root_classifier->root.w->rows / 2, rww_1 = root_classifier->root.w->cols / 2;
+    int i, x, y;
+    for (i = 0; i < root_classifier->count; i++) //looping on the parts of the current component
+    {
+        ccv_dpm_part_classifier_t* part = root_classifier->part + i;
+        ccv_dense_matrix_t* feature = responses[i];
+        //printf("(2): %f\n",feature->data.f32[0]);
+        part_feature[i] = dx[i] = dy[i] = 0;
+        ccv_distance_transform(feature, &part_feature[i], 0, &dx[i], 0, &dy[i], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATIVE | CCV_GSEDT);
+        ccv_matrix_free(feature);
+        int pwh = (part->w->rows - 1) / 2, pww = (part->w->cols - 1) / 2;
+        int offy = part->y + pwh - rwh * 2;
+        int miny = pwh, maxy = part_feature[i]->rows - part->w->rows + pwh;
+        int offx = part->x + pww - rww * 2;
+        int minx = pww, maxx = part_feature[i]->cols - part->w->cols + pww;
+        float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
+        for (y = rwh; y < root_feature->rows - rwh_1; y++)
+        {
+            int iy = ccv_clamp(y * 2 + offy, miny, maxy);
+            for (x = rww; x < root_feature->cols - rww_1; x++)
+            {
+                int ix = ccv_clamp(x * 2 + offx, minx, maxx);
+                f_ptr[x] -= ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[i], iy, ix, 0);
+            }
+            f_ptr += root_feature->cols;
+        }
+    }
+}
+
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
 {
 	int c, i, j, k, x, y;
@@ -2066,17 +2124,40 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	_ccv_dpm_feature_pyramid(a, pyr, scale_upto, params.interval);
 	ccv_array_t* idx_seq;
 	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
+    ccv_dense_matrix_t**** p_features_per_model[count];
+    for (c = 0; c < count; c++) //calling different models (different classes)
+	{
+        ccv_dense_matrix_t**** part_features = (ccv_dense_matrix_t****)alloca(((scale_upto+next*2)-next)*sizeof(ccv_dense_matrix_t***));
+        ccv_dpm_mixture_model_t* model = _model[c];
+        for (i = next; i < scale_upto + next * 2; i++) //looping on the different computed scales of feature pyramid
+		{
+            ccv_dense_matrix_t** features_per_component = (ccv_dense_matrix_t**)alloca(model->count*sizeof(ccv_dense_matrix_t*));
+            for (j = 0; j < model->count; j++) //calling different components of current mixture model
+			{
+                ccv_dense_matrix_t* responses = (ccv_dense_matrix_t*)alloca(CCV_DPM_PART_MAX*sizeof(ccv_dense_matrix_t));
+                ccv_dpm_root_classifier_t* root = model->root + j;
+                _ccv_dpm_compute_score1(root, pyr[i - next], responses);
+                features_per_component[j] = responses;
+                //printf("(1): %d\n", responses);
+			}
+            part_features[i-next] = features_per_component;
+        }
+        p_features_per_model[c] = part_features;
+	}
 	for (c = 0; c < count; c++) //calling different models (different classes)
 	{
+        ccv_dense_matrix_t*** part_features = p_features_per_model[c];
+        ccv_dpm_mixture_model_t* model = _model[c];
 		ccv_array_t* seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
 		ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
-		ccv_dpm_mixture_model_t* model = _model[c];
 		double scale_x = 1.0;
 		double scale_y = 1.0;
 		for (i = next; i < scale_upto + next * 2; i++) //looping on the different computed scales of feature pyramid
 		{
+            ccv_dense_matrix_t** features_per_component = part_features[i-next];
 			for (j = 0; j < model->count; j++) //calling different components of current mixture model
 			{
+                ccv_dense_matrix_t* responses = features_per_component[j];
 				ccv_dpm_root_classifier_t* root = model->root + j;
 				ccv_dense_matrix_t* root_feature = 0;
 				ccv_dense_matrix_t* part_feature[CCV_DPM_PART_MAX];
@@ -2086,7 +2167,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
                 ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
 				ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
 
-                _ccv_dpm_compute_score(root, pyr[i], pyr[i - next], &root_feature, part_feature, dx, dy);   // TODO, comment this
+                _ccv_dpm_compute_score2(root, pyr[i], pyr[i - next], responses, &root_feature, part_feature, dx, dy);   // TODO, comment this
                 //_ccv_dpm_compute_score_root_only(root, pyr[i], pyr[i - next], &root_feature);   // TODO
                 //_ccv_dpm_compute_score_dictionary_only(root_dictionary, pyr[i], pyr[i - next], dictionary_feature/*, dx, dy*/); // TODO, MOVE OUT OF LOOP
                 // reconstruct_part_filter_responses(dictionary_feature,alpha_vectors,...,part_feature,dx,dy);  // TODO
