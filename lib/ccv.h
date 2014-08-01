@@ -811,7 +811,7 @@ enum {
 extern const ccv_dpm_param_t ccv_dpm_default_params;
 
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params, char* sparsefile, char *alphafile);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
 ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_dpm_read_mixture_model(const char* directory);
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 
@@ -1234,5 +1234,6 @@ ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
 void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
 void ccv_convnet_free(ccv_convnet_t* convnet);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefile, char *alphafile, ccv_dpm_param_t params);
 
 #endif
