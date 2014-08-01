@@ -811,7 +811,7 @@ enum {
 extern const ccv_dpm_param_t ccv_dpm_default_params;
 
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params, char* sparsefile, char *alphafile);
 ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_dpm_read_mixture_model(const char* directory);
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 

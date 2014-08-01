@@ -79,7 +79,7 @@ ccv_dpm_mixture_model_t** read_models(const char* directory, int num_models, int
 
 int main(int argc, char** argv)
 {
-	assert(argc >= 3);
+	assert(argc >= 5);
 	int i, j, num_models, model_list = 0;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
@@ -89,7 +89,7 @@ int main(int argc, char** argv)
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params);
+		ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params, argv[3], argv[4]);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (seq)
 		{
@@ -108,8 +108,8 @@ int main(int argc, char** argv)
 		ccv_matrix_free(image);
 	} else {
 		FILE* r = fopen(argv[1], "rt");
-		if (argc == 4)
-			chdir(argv[3]);
+		/*if (argc == 4)
+			chdir(argv[3]);*/
 		if(r)
 		{
 			size_t len = 1024;
@@ -123,7 +123,7 @@ int main(int argc, char** argv)
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params);
+				ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params, argv[3], argv[4]);
 				if (seq != 0)
 				{
 					for (i = 0; i < seq->rnum; i++)
