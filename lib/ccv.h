@@ -1234,6 +1234,6 @@ ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
 void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
 void ccv_convnet_free(ccv_convnet_t* convnet);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefile, char *alphafile, ccv_dpm_param_t params);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefile, char *alphafile, int model_index, ccv_dpm_param_t params);
 
 #endif

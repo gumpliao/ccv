@@ -12,14 +12,15 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	assert(argc >= 4);
-	int i, j;
+	int i, j, model_index = argc > 4? atoi(argv[4]) : 0;
+    assert(model_index >= 0);
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_dpm_sparse_detect_objects(image, argv[2], argv[3], ccv_dpm_default_params);
+		ccv_array_t* seq = ccv_dpm_sparse_detect_objects(image, argv[2], argv[3], model_index, ccv_dpm_default_params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (seq)
 		{
@@ -38,11 +39,10 @@ int main(int argc, char** argv)
 		ccv_matrix_free(image);
 	} else {
 		FILE* r = fopen(argv[1], "rt");
-		if (argc == 5)
-			chdir(argv[4]);
+		if (argc == 6)
+			chdir(argv[5]);
 		if(r)
 		{
-			unsigned int elapsed_time = get_current_time();
 			size_t len = 1024;
 			char* file = (char*)malloc(len);
 			ssize_t read;
@@ -54,7 +54,7 @@ int main(int argc, char** argv)
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_array_t* seq = ccv_dpm_sparse_detect_objects(image, argv[2], argv[3], ccv_dpm_default_params);
+				ccv_array_t* seq = ccv_dpm_sparse_detect_objects(image, argv[2], argv[3], model_index, ccv_dpm_default_params);
 				if (seq != 0)
 				{
 					for (i = 0; i < seq->rnum; i++)
@@ -64,10 +64,7 @@ int main(int argc, char** argv)
 						for (j = 0; j < comp->pnum; j++)
 							printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].classification.confidence);
 					}
-					printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 					ccv_array_free(seq);
-				} else {
-					printf("elapsed time %dms\n", elapsed_time);
 				}
 				ccv_matrix_free(image);
 			}
@@ -78,4 +75,3 @@ int main(int argc, char** argv)
 	ccv_drain_cache();
 	return 0;
 }
-
