@@ -2385,7 +2385,6 @@ int _ccv_dpm_read_sparse_dict(const char* directory, int next, int scale_upto, c
         part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, alloca(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
         for (k = 0; k < rows * cols * 31; k++)
             fscanf(r, "%f", &part_classifier[j].w->data.f32[k]);
-        ccv_make_matrix_immutable(part_classifier[j].w);
     }
     sparse_classifier[0].part = part_classifier;
     fclose(r);
@@ -2395,6 +2394,11 @@ int _ccv_dpm_read_sparse_dict(const char* directory, int next, int scale_upto, c
         ccv_dense_matrix_t** responses_per_pyr = (ccv_dense_matrix_t**)ccmalloc(K*sizeof(ccv_dense_matrix_t*));
         _ccv_dpm_compute_sparse_responses(sparse_classifier, pyr[i - next], responses_per_pyr);
         sparse_responses[i-next] = responses_per_pyr;
+    }
+    for (j = 0; j < sparse_classifier[0].count; j++)
+    {
+        sparse_classifier[0].part[j].w->type = CCV_REUSABLE;
+        ccv_matrix_free(sparse_classifier[0].part[j].w);
     }
     
     return K;
