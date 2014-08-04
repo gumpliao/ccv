@@ -2363,45 +2363,11 @@ static void _ccv_dpm_compute_sparse_responses(ccv_dpm_root_classifier_t* sparse_
         ccv_dpm_part_classifier_t* part = sparse_classifier->part + i;
         ccv_dense_matrix_t* response = 0;
         ccv_filter(hog2x, part->w, &response, 0, CCV_NO_PADDING);
-        responses[i] = response;
+        ccv_dense_matrix_t* feature = 0;
+        ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
+        ccv_matrix_free(response);
+        responses[i] = feature;
     }
-}
-
-int _ccv_dpm_read_sparse_dict(const char* directory, int next, int scale_upto, ccv_dense_matrix_t** pyr, ccv_dense_matrix_t*** sparse_responses)
-{
-    FILE* r = fopen(directory, "r");
-    if (r == 0)
-        return 0;
-    int rows, cols, K;
-    fscanf(r, "%d %d %d", &rows, &cols, &K);
-    
-    ccv_dpm_root_classifier_t* sparse_classifier = (ccv_dpm_root_classifier_t*)alloca(sizeof(ccv_dpm_root_classifier_t));
-    memset(sparse_classifier, 0, sizeof(ccv_dpm_root_classifier_t));
-    sparse_classifier[0].count = K;
-    ccv_dpm_part_classifier_t* part_classifier = (ccv_dpm_part_classifier_t*)alloca(sizeof(ccv_dpm_part_classifier_t) * sparse_classifier[0].count);
-    int i, j, k;
-    for (j = 0; j < sparse_classifier[0].count; j++)
-    {
-        part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, alloca(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
-        for (k = 0; k < rows * cols * 31; k++)
-            fscanf(r, "%f", &part_classifier[j].w->data.f32[k]);
-    }
-    sparse_classifier[0].part = part_classifier;
-    fclose(r);
-    
-    for (i = next; i < scale_upto + next * 2; i++) // looping on the different computed scales of feature pyramid
-    {
-        ccv_dense_matrix_t** responses_per_pyr = (ccv_dense_matrix_t**)ccmalloc(K*sizeof(ccv_dense_matrix_t*));
-        _ccv_dpm_compute_sparse_responses(sparse_classifier, pyr[i - next], responses_per_pyr);
-        sparse_responses[i-next] = responses_per_pyr;
-    }
-    for (j = 0; j < sparse_classifier[0].count; j++)
-    {
-        sparse_classifier[0].part[j].w->type = CCV_REUSABLE;
-        ccv_matrix_free(sparse_classifier[0].part[j].w);
-    }
-    
-    return K;
 }
 
 static void _ccv_dpm_sparse_compute_score(ccv_dpm_root_classifier_t* root_classifier, ccv_dense_matrix_t* hog, ccv_dense_matrix_t* hog2x, ccv_dense_matrix_t** responses, ccv_dense_matrix_t** _response, ccv_dense_matrix_t** part_feature, ccv_dense_matrix_t** dx, ccv_dense_matrix_t** dy)
@@ -2421,12 +2387,9 @@ static void _ccv_dpm_sparse_compute_score(ccv_dpm_root_classifier_t* root_classi
     for (i = 0; i < root_classifier->count; i++) // looping on the parts of the current component
     {
         ccv_dpm_part_classifier_t* part = root_classifier->part + i;
-        ccv_dense_matrix_t* response = responses[i];
-        ccv_dense_matrix_t* feature = 0;
-        ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
+        ccv_dense_matrix_t* feature = responses[i];
         part_feature[i] = dx[i] = dy[i] = 0;
         ccv_distance_transform(feature, &part_feature[i], 0, &dx[i], 0, &dy[i], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATIVE | CCV_GSEDT);
-        ccv_matrix_free(feature);
         int pwh = (part->w->rows - 1) / 2, pww = (part->w->cols - 1) / 2;
         int offy = part->y + pwh - rwh * 2;
         int miny = pwh, maxy = part_feature[i]->rows - part->w->rows + pwh;
@@ -2446,62 +2409,29 @@ static void _ccv_dpm_sparse_compute_score(ccv_dpm_root_classifier_t* root_classi
     }
 }
 
-ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefile, char *alphafile, int model_index, ccv_dpm_param_t params)
+ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifier_t* sparse_classifier, ccv_dense_matrix_t* alpha, ccv_dpm_mixture_model_t** models, int num_models, int model_index, ccv_dpm_param_t params)
 {
-	int c, i, j, k, m, n, p, x, y, num_models, num_filters, K, K_check;
-    
-    /* reading from alpha vectors file:
-     * number of models involved (first int in the file)
-     * paths to each model file */
-    FILE* r = fopen(alphafile, "r");
-    if (r == 0)
-        return 0;
-    fscanf(r, "%d", &num_models);
-    ccv_dpm_mixture_model_t** models = (ccv_dpm_mixture_model_t**)alloca(sizeof(ccv_dpm_mixture_model_t*) * num_models);
-    size_t len = 1024;
-    char* line = (char*)malloc(len);
-    ssize_t read;
-    for (i = 0; i < num_models; i++)
-    {
-        if ((read = getline(&line, &len, r)) != -1)
-        {
-            if (line[0] != '\n')
-            {
-                while(read > 1 && isspace(line[read - 1]))
-                    read--;
-                line[read] = 0;
-                models[i] = ccv_dpm_read_mixture_model(line);
-            }
-            else
-                i--;
-        }
-    }
-    free(line);
+	int c, i, j, k, m, n, p, x, y;
     
     /* compute HOG feature pyramid */
     double scale = pow(2.0, 1.0 / (params.interval + 1.0));
 	int next = params.interval + 1;
-	int scale_upto = _ccv_dpm_scale_upto(a, models, num_models, params.interval);
+	int scale_upto = _ccv_dpm_scale_upto(a, (model_index? &(models[model_index-1]) : models), (model_index? 1 : num_models), params.interval);
 	if (scale_upto < 0) // image is too small to be interesting
 		return 0;
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	_ccv_dpm_feature_pyramid(a, pyr, scale_upto, params.interval);
     
-    /* read dictionary of sparse filters
-     * convolve sparse filters with feature pyramid
-     * store result of convolution for each feature pyramid */
-    ccv_dense_matrix_t*** sparse_responses = (ccv_dense_matrix_t***)ccmalloc(((scale_upto+next*2)-next)*sizeof(ccv_dense_matrix_t**));
-    K = _ccv_dpm_read_sparse_dict(sparsefile, next, scale_upto, pyr, sparse_responses);
-    
-    /* finish reading alpha file and check that K value matches the one in sparse file */
-    fscanf(r, "%d %d", &num_filters, &K_check);
-    assert(K == K_check);
-    /* store activation vectors in 2D array */
-    float alpha[num_filters][K];
-    for (i = 0; i < num_filters; i++)
-        for (j = 0; j < K; j++)
-            fscanf(r, "%f", &alpha[i][j]);
-    fclose(r);
+    /* convolve sparse filters with feature pyramid
+     * store result of convolution for each scale */
+    k = sparse_classifier->count;
+    ccv_dense_matrix_t*** sparse_responses = (ccv_dense_matrix_t***)alloca(((scale_upto+next*2)-next)*sizeof(ccv_dense_matrix_t**));
+    for (i = next; i < scale_upto + next * 2; i++) // looping on the different computed scales of feature pyramid
+    {
+        ccv_dense_matrix_t** responses_per_scale = (ccv_dense_matrix_t**)alloca(k*sizeof(ccv_dense_matrix_t*));
+        _ccv_dpm_compute_sparse_responses(sparse_classifier, pyr[i - next], responses_per_scale);
+        sparse_responses[i-next] = responses_per_scale;
+    }
     
     int alpha_counter = 0;
     
@@ -2513,9 +2443,14 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
     ccv_dense_matrix_t**** p_features_per_model[(model_index? 1 : num_models)];
     for (c = 0; c < num_models; c++) // looping on different models (different object classes)
 	{
-        if (model_index && c != (model_index-1))
-            continue;
         ccv_dpm_mixture_model_t* model = models[c];
+        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
+        {
+            /* increment alpha_counter and continue loop, so that part filters
+             * of the current model are not uselessly reconstructed */
+            alpha_counter += model->count * model->root->count;
+            continue;
+        }
         /* initialise part features array for current model:
          * the size is the number of scales in feature pyramid */
         ccv_dense_matrix_t**** part_features = (ccv_dense_matrix_t****)alloca(((scale_upto+next*2)-next)*sizeof(ccv_dense_matrix_t***));
@@ -2526,7 +2461,7 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
              * on the feature pyramid */
             int start = alpha_counter;
             /* retrieve pointer to sparse responses for current scale of feature pyramid */
-            ccv_dense_matrix_t** responses_per_pyr = sparse_responses[i-next];
+            ccv_dense_matrix_t** responses_per_scale = sparse_responses[i-next];
             /* initialise array to store reconstructed responses for each model component */
             ccv_dense_matrix_t*** features_per_component = (ccv_dense_matrix_t***)alloca(model->count*sizeof(ccv_dense_matrix_t**));
             for (n = 0; n < model->count; n++) // looping on the different components of current mixture model
@@ -2536,23 +2471,23 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
                 for (p = 0; p < root->count; p++) // looping on the parts of the current component
                 {
                     int M = pyr[i-next]->rows * pyr[i-next]->cols;
-                    float temp[K][M];
-                    ccv_dense_matrix_t* response = ccv_dense_matrix_new(pyr[i-next]->rows, pyr[i-next]->cols, CCV_32F | 31, 0, 0);
+                    float temp[k][M];
+                    memset(temp, 0.0, sizeof(temp));
+                    ccv_dense_matrix_t* response = ccv_dense_matrix_new(pyr[i-next]->rows, pyr[i-next]->cols, CCV_32F | CCV_C1, 0, 0);
                     /* reconstruct original response via sparse matrix multiplication:
                      * first step: accumulation */
-                    for (j = 0; j < K; j++)
-                        for (m = 0; m < M; m++)
-                        {
-                            if (alpha[alpha_counter][j])
-                                temp[j][m] = alpha[alpha_counter][j] * responses_per_pyr[j]->data.f32[m];
-                            else
-                                temp[j][m] = 0.0;
-                        }
+                    for (j = 0; j < k; j++)
+                    {
+                        float alpha_value = ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, alpha, alpha_counter, j, 0);
+                        if (alpha_value)
+                            for (m = 0; m < M; m++)
+                                temp[j][m] = alpha_value * responses_per_scale[j]->data.f32[m];
+                    }
                     /* second step: sum */
                     for (m = 0; m < M; m++)
                     {
                         response->data.f32[m] = 0.0;
-                        for (j = 0; j < K; j++)
+                        for (j = 0; j < k; j++)
                             response->data.f32[m] += temp[j][m];
                     }
                     responses[p] = response;
@@ -2567,13 +2502,13 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
         /* just before finishing the loop of the current model, we update alpha_counter
          * adding the total number of parts belonging to the current model */
         alpha_counter += model->count * model->root->count;
-        if (model_index && c > (model_index-1))
+        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
             break;
 	}
     /* reconstruction finished, proceed with score computation and the actual detections */
 	for (c = 0; c < num_models; c++) // looping on different models (different object classes)
 	{
-        if (model_index && c != (model_index-1))
+        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
             continue;
         ccv_dpm_mixture_model_t* model = models[c];
         /* get (reconstructed) part features for the current model */
@@ -2598,7 +2533,8 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
 
                 _ccv_dpm_sparse_compute_score(root, pyr[i], pyr[i - next], responses, &root_feature, part_feature, dx, dy);
 
-				/* from this point onwards, the code is exactly the same as in ccv_dpm_detect_objects */
+				/* from this point onwards, the code is exactly the same as in ccv_dpm_detect_objects
+				 * (except for some additional cleanups) */
                 int rwh = (root->root.w->rows - 1) / 2, rww = (root->root.w->cols - 1) / 2;
 				int rwh_1 = root->root.w->rows / 2, rww_1 = root->root.w->cols / 2;
 				/* these values are designed to make sure works with odd/even number of rows/cols
@@ -2756,11 +2692,43 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, char* sparsefi
 		}
 		ccv_array_free(seq);
 		ccv_array_free(seq2);
-        if (model_index && c > (model_index-1))
+        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
             break;
 	}
-
-	for (i = 0; i < scale_upto + next * 2; i++)
+    
+    /* reconstructed responses cleanup */
+    for (c = 0; c < num_models; c++)
+    {
+        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
+            continue;
+        ccv_dpm_mixture_model_t* model = models[c];
+        ccv_dense_matrix_t**** part_features = p_features_per_model[c];
+        for (i = next; i < scale_upto + next * 2; i++)
+        {
+            ccv_dense_matrix_t*** features_per_component = part_features[i-next];
+            for (n = 0; n < model->count; n++)
+            {
+                ccv_dense_matrix_t** responses = features_per_component[n];
+                ccv_dpm_root_classifier_t* root = model->root + n;
+                for (p = 0; p < root->count; p++)
+                    ccv_matrix_free(responses[p]);
+            }
+        }
+        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
+            break;
+    }
+    
+    /* sparse responses cleanup */
+    k = sparse_classifier->count;
+    for (i = next; i < scale_upto + next * 2; i++)
+    {
+        ccv_dense_matrix_t** responses_per_scale = sparse_responses[i-next];
+        for (j = 0; j < k; j++)
+            ccv_matrix_free(responses_per_scale[j]);
+    }
+    
+    /* feature pyramid cleanup */
+    for (i = 0; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i]);
 
 	ccv_array_t* result_seq2;
