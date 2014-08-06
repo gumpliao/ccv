@@ -617,7 +617,7 @@ static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_class
 	ccv_make_matrix_immutable(root_classifier->root.w);
 }
 
-static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root_classifier, int parts, int symmetric)
+static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root_classifier, int parts, int symmetric, int square_filter_size)
 {
 	int i, j, k, x, y;
 	ccv_dense_matrix_t* w = 0;
@@ -629,6 +629,7 @@ static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root
 	double area = w->rows * w->cols / (double)parts;
 	for (i = 0; i < parts;)
 	{
+        j = k = square_filter_size;
 		ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + i;
 		int dx = 0, dy = 0, dw = 0, dh = 0, sym = 0;
 		double dsum = -1.0; // absolute value, thus, -1.0 is enough
@@ -648,13 +649,16 @@ static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root
 			} \
 			ccv_matrix_free(slice); \
 		}
-		for (j = 1; (j < area + 1) && (j * 3 <= w->rows * 2); j++)
+		for (j = (square_filter_size? j : 1); (square_filter_size? (j < square_filter_size+1) : ((j < area + 1) && (j * 3 <= w->rows * 2))); j++)
 		{
-			k = (int)(area / j + 0.5);
-			if (k < 1 || k * 3 > w->cols * 2)
-				continue;
-			if (j > k * 2 || k > j * 2)
-				continue;
+            if (!square_filter_size)
+            {
+                k = (int)(area / j + 0.5);
+                if (k < 1 || k * 3 > w->cols * 2)
+                    continue;
+                if (j > k * 2 || k > j * 2)
+                    continue;
+            }
 			if (symmetric)
 			{
 				if (k % 2 == w->cols % 2) // can be symmetric in horizontal center
@@ -1743,7 +1747,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			printf(" - skipping part filters initialization for model %d(%d)\n", i + 1, params.components);
 		} else {
 			printf(" - initializing part filters for model %d(%d)\n", i + 1, params.components);
-			_ccv_dpm_initialize_part_classifiers(model->root + i, params.parts, params.symmetric);
+			_ccv_dpm_initialize_part_classifiers(model->root + i, params.parts, params.symmetric, params.square_filter_size);
 			_ccv_dpm_write_checkpoint(model, 0, checkpoint);
 			_ccv_dpm_write_checkpoint(model, 0, initcheckpoint);
 		}
@@ -2416,7 +2420,7 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_c
     /* compute HOG feature pyramid */
     double scale = pow(2.0, 1.0 / (params.interval + 1.0));
 	int next = params.interval + 1;
-	int scale_upto = _ccv_dpm_scale_upto(a, (model_index? &(models[model_index-1]) : models), (model_index? 1 : num_models), params.interval);
+	int scale_upto = _ccv_dpm_scale_upto(a, (model_index? &models[model_index-1] : models), (model_index? 1 : num_models), params.interval);
 	if (scale_upto < 0) // image is too small to be interesting
 		return 0;
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));

@@ -29,7 +29,8 @@ void exit_with_help()
 	"    --include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
 	"    --grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 0]\n"
 	"    --discard-estimating-constant : 0 or 1, when estimating bounding boxes, discarding constant (which may be accumulated error) [DEFAULT TO 1]\n"
-	"    --percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n\n"
+	"    --percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n"
+	"    --square-filter-size : sets the side length of square filters (to be used with sparse approximation)\n\n"
 	);
 	exit(-1);
 }
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
 		{"include-overlap", 1, 0, 0},
 		{"grayscale", 1, 0, 0},
 		{"discard-estimating-constant", 1, 0, 0},
+        {"square-filter-size", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
 	char* positive_list = 0;
@@ -85,6 +87,7 @@ int main(int argc, char** argv)
 		.root_relabels = 20,
 		.relabels = 10,
 		.negative_cache_size = 2000,
+        .square_filter_size = 0,
 		.C = 0.002,
 		.percentile_breakdown = 0.05,
 		.include_overlap = 0.7,
@@ -160,6 +163,9 @@ int main(int argc, char** argv)
 			case 21:
 				params.discard_estimating_constant = !!atoi(optarg);
 				break;
+			case 22:
+                params.square_filter_size = atoi(optarg);
+                break;
 		}
 	}
 	assert(positive_list != 0);

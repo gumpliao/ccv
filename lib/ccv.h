@@ -795,6 +795,7 @@ typedef struct {
 	int relabels;
 	int discard_estimating_constant; // 1
 	int negative_cache_size; // 1000
+    int square_filter_size; // 0
 	double include_overlap; // 0.7
 	double alpha;
 	double alpha_ratio; // 0.85
