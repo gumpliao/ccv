@@ -11,7 +11,7 @@ void discard(ifstream &f, char* temp);
 
 char** getModelsFromFile(char* filename, int& no_file_models);
 
-void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths);
+void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths, bool append);
 
 float* getDataFromPtrVector(vector<float*> v, int m, int n);
 
@@ -133,10 +133,13 @@ char** getModelsFromFile(char* filename, int& no_file_models)
     return no_file_models? models : NULL;
 }
 
-void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths)
+void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths, bool append)
 {
     ofstream o;
-    o.open(filename);
+    if (append)
+        o.open(filename, ios_base::app);
+    else
+        o.open(filename);
     int cols = X.m(), rows = X.n();
 
     if (paths)

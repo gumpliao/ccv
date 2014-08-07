@@ -38,6 +38,7 @@ int main(int argc, char** argv)
         {"verbose", 1, 0, 0},
         {"numThreads", 1, 0, 0},
         {"file", 1, 0, 0},
+        {"outfile", 1, 0, 0},
         {0, 0, 0, 0}
     };
 
@@ -52,6 +53,7 @@ int main(int argc, char** argv)
     constraint_type mode(PENALTY);
     constraint_type_D modeD(L2);
     mode_compute modeParam(static_cast<mode_compute>(0));
+    char* outfile = 0;
 
     int p(0), param_count(0);
     while (getopt_long_only(argc, argv, "", param_options, &p) != -1)
@@ -137,6 +139,10 @@ int main(int argc, char** argv)
                 ind = optind-1;
                 param_count++;
                 break;
+            case 20:
+                outfile = optarg;
+                param_count++;
+                break;
         }
     }
     cout << "K = " << K << "\nlambda = " << lambda << "\niter = " << iter <<
@@ -181,8 +187,13 @@ int main(int argc, char** argv)
 
     trainDL<float>(X, D, param, K, batchsize, NUM_THREADS);
 
-    char filename[] = "sparse.dict";
-    saveToFile(filename, D, NULL);
+    if (outfile)
+        saveToFile(outfile, D, NULL, false);
+    else
+    {
+        char filename[] = "sparse.dict";
+        saveToFile(filename, D, NULL, false);
+    }
 
     cleanup(prX, NULL, file_models, no_file_models);
 

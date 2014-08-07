@@ -2444,16 +2444,21 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_c
 	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
     /* initialise structure for pre-computation of part features:
      * uppermost level: part features per model */
-    ccv_dense_matrix_t**** p_features_per_model[(model_index? 1 : num_models)];
+    ccv_dense_matrix_t**** p_features_per_model[num_models];
     for (c = 0; c < num_models; c++) // looping on different models (different object classes)
 	{
         ccv_dpm_mixture_model_t* model = models[c];
-        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
+        if (model_index) // if we want to detect only objects of class at model_index
         {
-            /* increment alpha_counter and continue loop, so that part filters
-             * of the current model are not uselessly reconstructed */
-            alpha_counter += model->count * model->root->count;
-            continue;
+            if (c > (model_index-1))
+                break;
+            else if (c < (model_index-1))
+            {
+                /* increment alpha_counter and continue loop, so that part filters
+                 * of the current model are not uselessly reconstructed */
+                alpha_counter += model->count * model->root->count;
+                continue;
+            }
         }
         /* initialise part features array for current model:
          * the size is the number of scales in feature pyramid */
@@ -2506,14 +2511,17 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_c
         /* just before finishing the loop of the current model, we update alpha_counter
          * adding the total number of parts belonging to the current model */
         alpha_counter += model->count * model->root->count;
-        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
-            break;
 	}
     /* reconstruction finished, proceed with score computation and the actual detections */
 	for (c = 0; c < num_models; c++) // looping on different models (different object classes)
 	{
-        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
-            continue;
+        if (model_index) // if we want to detect only objects of class at model_index
+        {
+            if (c > (model_index-1))
+                break;
+            else if (c < (model_index-1))
+                continue;
+        }
         ccv_dpm_mixture_model_t* model = models[c];
         /* get (reconstructed) part features for the current model */
         ccv_dense_matrix_t**** part_features = p_features_per_model[c];
@@ -2696,15 +2704,18 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_c
 		}
 		ccv_array_free(seq);
 		ccv_array_free(seq2);
-        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
-            break;
 	}
     
     /* reconstructed responses cleanup */
     for (c = 0; c < num_models; c++)
     {
-        if (model_index && c != (model_index-1)) // if we want to detect only objects of class at model_index
-            continue;
+        if (model_index) // if we want to detect only objects of class at model_index
+        {
+            if (c > (model_index-1))
+                break;
+            else if (c < (model_index-1))
+                continue;
+        }
         ccv_dpm_mixture_model_t* model = models[c];
         ccv_dense_matrix_t**** part_features = p_features_per_model[c];
         for (i = next; i < scale_upto + next * 2; i++)
@@ -2718,8 +2729,6 @@ ccv_array_t* ccv_dpm_sparse_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_c
                     ccv_matrix_free(responses[p]);
             }
         }
-        if (model_index && c > (model_index-1)) // if we want to detect only objects of class at model_index
-            break;
     }
     
     /* sparse responses cleanup */

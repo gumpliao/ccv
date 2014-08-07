@@ -108,8 +108,7 @@ int main(int argc, char** argv)
 
     alpha.toFull(alphaDense);
 
-    char filename[] = "alpha.dict";
-    saveToFile(filename, alphaDense, paths);
+    saveToFile(argv[dict_ind], alphaDense, paths, true);
 
     cleanup(prX, prD, file_models, no_file_models);
 
