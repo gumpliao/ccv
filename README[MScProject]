@@ -63,6 +63,10 @@ bin/spams/spams.h : everything (C++ adaptation of the original SPAMS interface f
 
 2) CCV:
 
+bin/dpmvldtr.py : everything
+bin/vocext.py : everything
+bin/voclist.py : everything
+bin/vocvldtr.py : everything
 bin/dpmsparsedetect.c : everything
 bin/dpmdetect.c : 12-80 and changed 83, 87, 92, 126 to reflect the updated flow of control
 bin/dpmcreate.c : few lines to add the square-filter-size parameter (33, 66, 90, 167, 168)
