@@ -63,7 +63,7 @@ int main(int argc, char** argv)
 		{"include-overlap", 1, 0, 0},
 		{"grayscale", 1, 0, 0},
 		{"discard-estimating-constant", 1, 0, 0},
-        {"square-filter-size", 1, 0, 0},
+		{"square-filter-size", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
 	char* positive_list = 0;
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 		.root_relabels = 20,
 		.relabels = 10,
 		.negative_cache_size = 2000,
-        .square_filter_size = 0,
+		.square_filter_size = 0,
 		.C = 0.002,
 		.percentile_breakdown = 0.05,
 		.include_overlap = 0.7,
@@ -164,8 +164,8 @@ int main(int argc, char** argv)
 				params.discard_estimating_constant = !!atoi(optarg);
 				break;
 			case 22:
-                params.square_filter_size = atoi(optarg);
-                break;
+				params.square_filter_size = atoi(optarg);
+				break;
 		}
 	}
 	assert(positive_list != 0);

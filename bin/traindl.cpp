@@ -8,12 +8,39 @@ using namespace std;
 
 void exit_with_help()
 {
-    cout << "TODO" << endl;
+    cout << "\n  \033[1mUSAGE\033[0m\n\n    traindl [OPTION...]\n\n"
+    "  \033[1mREQUIRED OPTIONS\033[0m\n\n"
+    "    --K : dictionary size\n"
+    "    --lambda : sparsity level\n"
+    "    --iter : number of iterations\n\n"
+    "  \033[1mOTHER OPTIONS\033[0m\n\n"
+    "    --lambda2 : optional parameter [DEFAULT TO 10e-10]\n"
+    "    --mode : defines the dictionary learning problem; in range [0-6] [DEFAULT TO 2]\n"
+    "    --posAlpha : adds positivity constraints on the coefficients; incompatible with mode = 3; 4 [DEFAULT TO false]\n"
+    "    --modeD : constraint type for the dictionary; in range [0-3] [DEFAULT TO 0]\n"
+    "    --posD : adds positivity constraints on the dictionary; incompatible with modeD = 2 [DEFAULT TO false]\n"
+    "    --gamma1 : parameter for modeD >= 1 [DEFAULT TO 0]\n"
+    "    --gamma2 : parameter for modeD = 1 [DEFAULT TO 0]\n"
+    "    --numThreads : number of threads to use on enabled multi-core / multi-cpu machines [DEFAULT TO -1 (all available)]\n"
+    "    --batchsize : minibatch size [DEFAULT TO 256*(numThreads+1)]\n"
+    "    --iter updateD : number of BCD iterations for the dictionary update step [DEFAULT TO 1]\n"
+    "    --modeParam : optimisation mode; in range [0-3] [DEFAULT TO 0]\n"
+    "    --rho : optional tuning parameter for modeParam >= 1 [DEFAULT TO 1.0]\n"
+    "    --t0 : optional tuning parameter for modeParam >= 1 [DEFAULT TO 1e-5]\n"
+    "    --clean : cleans unused elements from dictionary [DEFAULT TO true]\n"
+    "    --verbose : displays more information during execution [DEFAULT TO true]\n"
+    "    --file : optional path to text file containing a list of model files [DEFAULT TO null]\n"
+    "    --outfile : optional output file to store the computed dictionary [DEFAULT TO sparse.dict]\n\n";
     exit(-1);
 }
 
 int main(int argc, char** argv)
 {
+    /* if no parameters are provided, print help to stdout */
+    if (argc == 1)
+        exit_with_help();
+
+    /* structure of input parameters */
     static struct option param_options[] = {
         /* help */
         {"help", 0, 0, 0},
@@ -42,11 +69,12 @@ int main(int argc, char** argv)
         {0, 0, 0, 0}
     };
 
+    /* initialise default values for optional parameters */
     int K(0), iter(0), iter_updateD(1), ind(0),
         NUM_THREADS(-1), batchsize = 256*(NUM_THREADS+1);
-    float lambda(0), lambda2(10e-10),
+    double lambda(0), lambda2(10e-10),
           gamma1(0), gamma2(0),
-          t0(1e-5), rho(float(1.0));
+          t0(1e-5), rho(double(1.0));
     bool posAlpha(false), posD(false),
          clean(true), verbose(true),
          FILE_PROVIDED(false), LIST_PROVIDED(false);
@@ -55,6 +83,7 @@ int main(int argc, char** argv)
     mode_compute modeParam(static_cast<mode_compute>(0));
     char* outfile = 0;
 
+    /* parse input arguments */
     int p(0), param_count(0);
     while (getopt_long_only(argc, argv, "", param_options, &p) != -1)
     {
@@ -145,14 +174,14 @@ int main(int argc, char** argv)
                 break;
         }
     }
-    cout << "K = " << K << "\nlambda = " << lambda << "\niter = " << iter <<
-    "\nmode = " << mode << "\nmodeD = " << modeD << "\nmodeParam = " << modeParam << endl;
 
+    /* check if the required parameters were provided */
     LIST_PROVIDED = argc > param_count*2+1;
     assert(FILE_PROVIDED || LIST_PROVIDED);
     assert(K != 0 && iter != 0 && lambda != 0 && NUM_THREADS != 0);
 
-    ParamDictLearn<float> param;
+    /* initialise param structure for dictionary learning */
+    ParamDictLearn<double> param;
     param.lambda = lambda;
     param.lambda2 = lambda2;
     param.iter = iter;
@@ -174,19 +203,25 @@ int main(int argc, char** argv)
     param.iter_updateD = iter_updateD;
     param.log = false;
 
+    /* grab model list from file (if provided) */
     int no_file_models = 0;
     char** file_models = FILE_PROVIDED? getModelsFromFile(argv[ind], no_file_models) : NULL;
 
     int m = 0, n = 0;
 
-    vector<float*> part_v = parseModelFiles(file_models, no_file_models, param_count*2+1, argc, argv, m, n, NULL);
+    /* grab part filters data from model files */
+    vector<double*> part_v = parseModelFiles(file_models, no_file_models, param_count*2+1, argc, argv, m, n, NULL);
 
-    float *prX = getDataFromPtrVector(part_v, m, n);
+    /* convert data from vector to array (the format required by SPAMS Matrix constructor) */
+    double *prX = getDataFromPtrVector(part_v, m, n);
 
-    Matrix<float> X(prX,m,n), D;
+    /* construct Matrix of input data X */
+    Matrix<double> X(prX,m,n), D;
 
-    trainDL<float>(X, D, param, K, batchsize, NUM_THREADS);
+    /* train dictionary on input data X with the provided parameters stored in param */
+    trainDL<double>(X, D, param, K, batchsize, NUM_THREADS);
 
+    /* save results to specified filename or default one */
     if (outfile)
         saveToFile(outfile, D, NULL, false);
     else
@@ -195,7 +230,9 @@ int main(int argc, char** argv)
         saveToFile(filename, D, NULL, false);
     }
 
+    /* free memory */
     cleanup(prX, NULL, file_models, no_file_models);
 
+    cout << "The dictionary was successfully trained and saved to: " << (outfile? outfile : "sparse.dict") << endl;
     return 0;
 }

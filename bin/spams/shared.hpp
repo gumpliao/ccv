@@ -7,37 +7,48 @@
 #include <string>
 using namespace std;
 
+/*** DECLARATIONS ***/
+
 void discard(ifstream &f, char* temp);
 
 char** getModelsFromFile(char* filename, int& no_file_models);
 
-void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths, bool append);
+void saveToFile(char* filename, Matrix<double> &X, vector<string> *paths, bool append);
 
-float* getDataFromPtrVector(vector<float*> v, int m, int n);
+double* getDataFromPtrVector(vector<double*> v, int m, int n);
 
-float* getDictionaryData(char* filename, int &K);
+double* getDictionaryData(char* filename, int &K);
 
-vector<float*> parseModelFiles(char** file_models, int no_file_models,
+vector<double*> parseModelFiles(char** file_models, int no_file_models,
                                int start, int argc, char** argv, int &m, int &n,
                                vector<string> *paths);
 
-void cleanup(float* prX, float* prD, char** file_models, int no_file_models);
+void cleanup(double* prX, double* prD, char** file_models, int no_file_models);
 
-vector<float*> parseModelFiles(char** file_models, int no_file_models,
+/*** DEFINITIONS ***/
+
+/* grab part filters data from model files */
+vector<double*> parseModelFiles(char** file_models, int no_file_models,
                                int start, int argc, char** argv, int &m, int &n,
                                vector<string> *paths)
 {
-    vector<float*> part_v;
+    vector<double*> part_v;
     bool size_set = false, file_parsed = false;
     int c = file_models? 0 : start;
+    /* set the loop condition to parse models from 2 sources:
+       1) list of model files provided through input file and stored into file_models;
+       2) paths directly listed as command-line arguments
+    */
     bool condition = file_models? c < no_file_models : c < argc;
     char** now_parsing = file_models? file_models : argv;
     while (condition)
     {
         ifstream f;
         f.open(now_parsing[c]);
+        /* if we want to store model paths */
         if (paths) paths->push_back(now_parsing[c]);
 
+        /* check the "final model" flag */
         char flag = f.get();
         assert(flag == '.');
 
@@ -45,6 +56,7 @@ vector<float*> parseModelFiles(char** file_models, int no_file_models,
         f >> comps;
         for (int k = 0; k < comps; k++)
         {
+            /* root info (read and ignored) */
             f >> rows;
             f >> cols;
 
@@ -54,12 +66,15 @@ vector<float*> parseModelFiles(char** file_models, int no_file_models,
             f >> parts;
             discard(f, temp);
 
+            /* part info (used and stored) */
             f >> rows;
             f >> cols;
+            /* must be square filter */
             assert(rows == cols);
             f >> temp;
 
             int weights_per_part = rows*cols*31;
+            /* set or check feature size */
             if (!size_set)
             {
                 m = weights_per_part;
@@ -70,8 +85,9 @@ vector<float*> parseModelFiles(char** file_models, int no_file_models,
 
             for (int j = 0; j < parts; j++)
             {
-                float* part_filter = new float[weights_per_part];
+                double* part_filter = new double[weights_per_part];
 
+                /* store part weights */
                 for (int i = 0; i < weights_per_part; i++)
                 {
                     f >> temp;
@@ -91,6 +107,7 @@ vector<float*> parseModelFiles(char** file_models, int no_file_models,
             delete[] temp;
         }
         f.close();
+        /* if we have parsed completely one source, change the loop condition and parse the other (if provided) */
         if (file_models && !file_parsed)
             if (c == no_file_models-1)
             {
@@ -100,12 +117,13 @@ vector<float*> parseModelFiles(char** file_models, int no_file_models,
             }
         condition = file_models? (file_parsed? ++c < argc : ++c < no_file_models) : ++c < argc;
     }
-    n = part_v.size();
+    n = part_v.size(); /* total number of part filters */
     assert(m > 0 && n > 0);
 
     return part_v;
 }
 
+/* grab model list from file */
 char** getModelsFromFile(char* filename, int& no_file_models)
 {
     ifstream f1;
@@ -113,6 +131,7 @@ char** getModelsFromFile(char* filename, int& no_file_models)
     string temp;
 
     int maxLen = 0;
+    /* set max path length as the longest path among those provided */
     while (f1 >> temp)
     {
         no_file_models++;
@@ -133,28 +152,34 @@ char** getModelsFromFile(char* filename, int& no_file_models)
     return no_file_models? models : NULL;
 }
 
-void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths, bool append)
+/* save a data matrix to file */
+void saveToFile(char* filename, Matrix<double> &X, vector<string> *paths, bool append)
 {
     ofstream o;
+    /* set open mode */
     if (append)
         o.open(filename, ios_base::app);
     else
         o.open(filename);
     int cols = X.m(), rows = X.n();
 
+    /* write file paths (if provided) */
     if (paths)
     {
         o << paths->size() << "\n";
         for (unsigned int i = 0; i < paths->size(); i++)
             o << paths->at(i) << "\n";
     }
-    else
+    else /* otherwise, write filter size */
         o << sqrt(cols/31) << " " << sqrt(cols/31) << " ";
 
+    /* write number of rows - i.e. dictionary size (K) if the input matrix is the learnt dictionary */
     o << rows;
+    /* if computing the alpha matrix, write also the number of columns */
     if (paths)
         o << " " << cols;
     o << "\n";
+    /* write the matrix data */
     for (int j = 0; j < rows; j++)
         for (int i = 0; i < cols; i++)
             o << X(i,j) << (i < (cols-1)? " " : "\n");
@@ -163,9 +188,10 @@ void saveToFile(char* filename, Matrix<float> &X, vector<string> *paths, bool ap
     delete paths;
 }
 
-float* getDataFromPtrVector(vector<float*> v, int m, int n)
+/* convert from vector<double*> to double* array (the format required by SPAMS Matrix constructor) */
+double* getDataFromPtrVector(vector<double*> v, int m, int n)
 {
-    float* prX = new float[m*n];
+    double* prX = new double[m*n];
     for (int i = 0; i < n; i++)
         for (int j = 0; j < m; j++)
             prX[i*m+j] = v[i][j];
@@ -176,17 +202,19 @@ float* getDataFromPtrVector(vector<float*> v, int m, int n)
     return prX;
 }
 
-float* getDictionaryData(char* filename, int m, int &K)
+/* grab data from the dictionary file */
+double* getDictionaryData(char* filename, int m, int &K)
 {
-    vector<float*> dict_v;
+    vector<double*> dict_v;
     ifstream f;
     f.open(filename);
     /* get rid of first 3 numbers */
     int temp;
     f >> temp; f >> temp; f >> temp;
+    /* store sparse (dict) filters into temporary vector<double*> */
     while (!f.fail() && !f.eof())
     {
-        float* dict_filter = new float[m];
+        double* dict_filter = new double[m];
         int i = 0;
         for (; i < m; i++)
             if (!(f >> dict_filter[i]))
@@ -198,16 +226,19 @@ float* getDictionaryData(char* filename, int m, int &K)
     K = dict_v.size();
     assert(K > 0);
 
+    /* employ the getDataFromPtrVector to convert vector<double*> to double* array */
     return getDataFromPtrVector(dict_v, m, K);
 }
 
+/* used in the context of parseModelFiles */
 void discard(ifstream &f, char* temp)
 {
     for (int i = 0; i < 13; i++)
         f >> temp;
 }
 
-void cleanup(float* prX, float* prD, char** file_models, int no_file_models)
+/* free memory */
+void cleanup(double* prX, double* prD, char** file_models, int no_file_models)
 {
     delete[] prX;
     delete[] prD;

@@ -1,0 +1,75 @@
+==============================================================
+Sparse Coding for Object Detection with Deformable Part Models
+
+                            README                            
+==============================================================
+
+
+Compilation
+-----------
+
+To compile the CCV library, go into lib folder and run
+
+./configure && cd ../bin && make
+
+
+Sparse Coding Tools and Detection
+---------------------------------
+
+To use the dictionary learning and OMP tools, in bin folder, run:
+
+./traindl --help
+
+and
+
+./omp --help
+
+to see the available options.
+
+The file produced after feeding model files to both traindl and omp can be used to perform accelerated multi-class detection, using the dpmsparsedetect executable. In bin folder, run:
+
+./dpmsparsedetect <test image> <sparse.dict> [model index]
+
+The model index is an optional parameter to perform single class detection. It refers to the position of the target model in the list of models used to build the sparse.dict file.
+
+Instead of a single test image, a text file containing a list of paths to test images is fine too.
+
+
+Evaluation Tools
+----------------
+
+To know how to run the evaluation scripts for VOC datasets (vocext.py, voclist.py, vocvldtr.py), use:
+
+./vocext.py --help
+
+for vocext, and the same syntax for voclist and vocvldtr.
+
+
+Contributions
+-------------
+
+CCV is a library of computer vision algorithms maintained by Liu Liu (http://libccv.org/).
+
+SPAMS is a toolbox for solving various sparse estimation problems developed by Julien Mairal et al. (http://spams-devel.gforge.inria.fr/).
+
+The following pieces of code were written by Michele Lo Russo (michele.lo-russo13@imperial.ac.uk):
+
+1) Interface for SPAMS:
+
+bin/traindl.cpp : everything
+bin/omp.cpp : everything
+bin/spams/shared.hpp : everything
+bin/spams/spams.h : everything (C++ adaptation of the original SPAMS interface for MATLAB) except SPAMS header
+
+2) CCV:
+
+bin/dpmsparsedetect.c : everything
+bin/dpmdetect.c : 12-80 and changed 83, 87, 92, 126 to reflect the updated flow of control
+bin/dpmcreate.c : few lines to add the square-filter-size parameter (33, 66, 90, 167, 168)
+lib/ccv.h : added square-filter-size to ccv_dpm_new_param_t struct and declaration for the ccv_dpm_sparse_detect_objects function (798, 1238)
+lib/ccv_dpm.c : 620, 632, 652-654, 1750, 2060-2064, 2232-2234, 2362-2787
+
+
+---------------------------------
+Michele Lo Russo
+michele.lo-russo13@imperial.ac.uk

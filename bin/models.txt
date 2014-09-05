@@ -1,5 +1,10 @@
-bicycle.model
-bird.model
-car.model
-chair.model
-pottedplant.model
+models/aeroplane12_2.model
+models/bicycle07_1.model
+models/bicycle07_2.model
+models/bus07_1.model
+models/car07_1.model
+models/car07_2.model
+models/motorbike12_2.model
+models/person07_1.model
+models/person12_3.model
+models/tvmonitor12_2.model
